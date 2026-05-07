@@ -6,6 +6,11 @@ export type DailyWeather = {
   weatherCode?: number
 }
 
+export type LocationTimezone = {
+  timeZone: string
+  utcOffsetSeconds?: number
+}
+
 export async function fetchDailyForecast(lat: number, lon: number): Promise<DailyWeather[] | null> {
   const url = new URL('https://api.open-meteo.com/v1/forecast')
   url.searchParams.set('latitude', String(lat))
@@ -32,4 +37,28 @@ export async function fetchDailyForecast(lat: number, lon: number): Promise<Dail
     precipProbMax: Array.isArray(precip) ? precip[idx] : undefined,
     weatherCode: Array.isArray(code) ? code[idx] : undefined,
   }))
+}
+
+export async function fetchLocationTimezone(
+  lat: number,
+  lon: number,
+  signal?: AbortSignal,
+): Promise<LocationTimezone | null> {
+  const url = new URL('https://api.open-meteo.com/v1/forecast')
+  url.searchParams.set('latitude', String(lat))
+  url.searchParams.set('longitude', String(lon))
+  url.searchParams.set('current', 'temperature_2m')
+  url.searchParams.set('timezone', 'auto')
+
+  const res = await fetch(url.toString(), { signal })
+  if (!res.ok) return null
+
+  const json = (await res.json()) as any
+  const timeZone = typeof json?.timezone === 'string' ? json.timezone : ''
+  if (!timeZone) return null
+
+  return {
+    timeZone,
+    utcOffsetSeconds: typeof json?.utc_offset_seconds === 'number' ? json.utc_offset_seconds : undefined,
+  }
 }

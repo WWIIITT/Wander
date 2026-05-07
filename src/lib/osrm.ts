@@ -43,6 +43,8 @@ export async function fetchOsrmRoute(
       dur = dist / 1.4 // ~5 km/h
     } else if (mode === 'bike') {
       dur = dist / 4.1 // ~15 km/h
+    } else if (mode === 'transit') {
+      dur = dist / 5.5 + 8 * 60 // ~20 km/h plus wait/walk/transfer buffer
     }
     
     return { distance: dist, duration: dur }
@@ -55,6 +57,8 @@ export async function fetchOsrmRoute(
     totalDur = totalDist / 1.4
   } else if (mode === 'bike') {
     totalDur = totalDist / 4.1
+  } else if (mode === 'transit') {
+    totalDur = legs.reduce((sum, leg) => sum + leg.duration, 0)
   }
 
   return {

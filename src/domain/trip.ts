@@ -1,6 +1,6 @@
 export type StopCategory = 'sight' | 'restaurant' | 'toilet'
 
-export type TransportMode = 'driving' | 'foot' | 'bike'
+export type TransportMode = 'driving' | 'foot' | 'bike' | 'transit'
 
 export type Stop = {
   id: string

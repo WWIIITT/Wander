@@ -7,7 +7,7 @@ import type { StopCategory, TransportMode } from './domain/trip'
 import { formatDistanceMeters, formatDurationSeconds } from './lib/format'
 import { searchPlaces, type NominatimPlace } from './lib/nominatim'
 import { fetchOsrmRoute, type OsrmRoute } from './lib/osrm'
-import { fetchDailyForecast, type DailyWeather } from './lib/openMeteo'
+import { fetchDailyForecast, fetchLocationTimezone, type DailyWeather } from './lib/openMeteo'
 
 function getRoomFromUrl(): string | null {
   const url = new URL(window.location.href)
@@ -92,7 +92,187 @@ function ModeSelect({ value, onChange }: { value: TransportMode; onChange: (v: T
       <option value="foot">步行</option>
       <option value="bike">骑行</option>
       <option value="driving">驾车</option>
+      <option value="transit">公共交通</option>
     </select>
+  )
+}
+
+function getTransportLabel(mode: TransportMode): string {
+  switch (mode) {
+    case 'foot':
+      return '步行'
+    case 'bike':
+      return '骑行'
+    case 'driving':
+      return '驾车'
+    case 'transit':
+      return '公共交通'
+  }
+}
+
+function formatNowInTimeZone(timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    weekday: 'short',
+  }).format(new Date())
+}
+
+type TransitRouteOption = {
+  title: string
+  departure?: string
+  arrival?: string
+  duration?: string
+  transfers?: string
+  tools: string[]
+  fare?: string
+  whyNow?: string
+  checkAt?: string
+  steps: string[]
+}
+
+function parseTransitSuggestion(markdown: string): TransitRouteOption[] {
+  const sections = markdown
+    .split(/^###\s+/m)
+    .map((section) => section.trim())
+    .filter(Boolean)
+
+  const options: TransitRouteOption[] = []
+
+  for (const section of sections) {
+    const lines = section.split('\n').map((line) => line.trim()).filter(Boolean)
+    if (lines.length === 0) continue
+
+    const [title, ...rest] = lines
+    if (!/^Option\b/i.test(title)) continue
+
+    const option: TransitRouteOption = {
+      title,
+      tools: [],
+      steps: [],
+    }
+
+    for (const line of rest) {
+      const fieldMatch = /^-\s*([A-Za-z ]+)\s*[:：]\s*(.+)$/.exec(line)
+      if (fieldMatch) {
+        const key = fieldMatch[1].trim().toLowerCase()
+        const value = fieldMatch[2].trim()
+
+        if (key === 'departure') option.departure = value
+        else if (key === 'arrival') option.arrival = value
+        else if (key === 'duration') option.duration = value
+        else if (key === 'transfers') option.transfers = value
+        else if (key === 'tools') option.tools = value.split(/[>,/|]/).map((item) => item.trim()).filter(Boolean)
+        else if (key === 'fare') option.fare = value
+        else if (key === 'why now') option.whyNow = value
+        else if (key === 'check at') option.checkAt = value
+        continue
+      }
+
+      const stepMatch = /^\d+\.\s+(.+)$/.exec(line)
+      if (stepMatch) {
+        option.steps.push(stepMatch[1].trim())
+      }
+    }
+
+    if (option.departure || option.duration || option.tools.length > 0 || option.steps.length > 0) {
+      options.push(option)
+    }
+  }
+
+  return options
+}
+
+function TransitSuggestionPanel({
+  suggestion,
+  timeZone,
+  localNow,
+}: {
+  suggestion: string
+  timeZone: string
+  localNow: string
+}) {
+  const options = parseTransitSuggestion(suggestion)
+
+  if (options.length === 0) {
+    return (
+      <div className="mt-2 rounded-lg border border-slate-200 bg-white p-4 text-sm prose prose-sm prose-slate max-w-none">
+        <ReactMarkdown>{suggestion}</ReactMarkdown>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-3 space-y-3">
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Transit Now</div>
+            <div className="mt-1 text-sm font-semibold text-slate-900">{localNow}</div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-slate-500">Time Zone</div>
+            <div className="mt-1 text-sm text-slate-700">{timeZone}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {options.map((option, idx) => (
+          <div key={idx} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-base font-semibold text-slate-900">{option.title.replace(/^Option\s*\d+\s*-\s*/i, '')}</div>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                  {option.departure ? <span className="rounded-full bg-slate-100 px-2.5 py-1">{option.departure}</span> : null}
+                  {option.arrival ? <span className="rounded-full bg-slate-100 px-2.5 py-1">到达 {option.arrival}</span> : null}
+                  {option.duration ? <span className="rounded-full bg-sky-50 px-2.5 py-1 text-sky-700">{option.duration}</span> : null}
+                  {option.transfers ? <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">{option.transfers}</span> : null}
+                  {option.fare ? <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">{option.fare}</span> : null}
+                </div>
+              </div>
+            </div>
+
+            {option.tools.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {option.tools.map((tool) => (
+                  <span key={tool} className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
+                    {tool}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+            {option.whyNow ? (
+              <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">{option.whyNow}</div>
+            ) : null}
+
+            {option.steps.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {option.steps.map((step, stepIdx) => (
+                  <div key={stepIdx} className="flex gap-3">
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-medium text-white">
+                      {stepIdx + 1}
+                    </div>
+                    <div className="pt-0.5 text-sm text-slate-700">{step}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {option.checkAt ? (
+              <div className="mt-3 border-t border-slate-200 pt-3 text-xs text-slate-500">Check live details: {option.checkAt}</div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -203,6 +383,10 @@ export default function App() {
 
   const [weather, setWeather] = useState<DailyWeather[] | null>(null)
   const [weatherLoading, setWeatherLoading] = useState(false)
+  const [destinationTimeZone, setDestinationTimeZone] = useState<string | null>(null)
+  const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  const effectiveTimeZone = destinationTimeZone || browserTimeZone
+  const localNowAtDestination = formatNowInTimeZone(effectiveTimeZone)
 
   const [trafficMessage, setTrafficMessage] = useState<string>('')
   const [trafficLoading, setTrafficLoading] = useState(false)
@@ -227,6 +411,28 @@ export default function App() {
 
     return () => {
       cancelled = true
+    }
+  }, [selectedDay?.stops])
+
+  useEffect(() => {
+    const first = selectedDay?.stops?.[0]
+    if (!first) {
+      setDestinationTimeZone(null)
+      return
+    }
+
+    const ctrl = new AbortController()
+    ;(async () => {
+      try {
+        const result = await fetchLocationTimezone(first.lat, first.lon, ctrl.signal)
+        setDestinationTimeZone(result?.timeZone ?? null)
+      } catch {
+        setDestinationTimeZone(null)
+      }
+    })()
+
+    return () => {
+      ctrl.abort()
     }
   }, [selectedDay?.stops])
 
@@ -274,14 +480,22 @@ export default function App() {
     aiAbortRef.current?.abort()
     aiAbortRef.current = new AbortController()
 
+    const transitInstruction =
+      trip.transportMode === 'transit'
+        ? '\nPublic transport requirement: use a Google Maps transit results style. Return 2 to 4 route options in markdown using this exact structure: "### Option 1 - Fastest", then bullet lines for "- Departure: ...", "- Arrival: ...", "- Duration: ...", "- Transfers: ...", "- Tools: metro > train > bus", "- Fare: ...", "- Why now: ...", "- Check at: Google Maps transit / local operator", followed by numbered step lines. Give detailed recommendations for likely tools such as subway/metro, commuter rail, high-speed rail, bus, tram, ferry, airport rail, and walking connections. For each leg, explain which public transport tool is most likely suitable, likely transfer count, first/last-mile walking, time buffer, and when taxi/walk is a better fallback. Do not invent exact live schedules.'
+        : ''
+
     const prompt =
       `Trip name: ${trip.name}\n` +
-      `Transport: ${trip.transportMode}\n` +
+      `Transport: ${getTransportLabel(trip.transportMode)} (${trip.transportMode})\n` +
+      `Destination time zone: ${effectiveTimeZone}\n` +
+      `Current local time at destination: ${localNowAtDestination}\n` +
       `Selected day: ${selectedDay?.title}\n` +
       `Stops:\n` +
       (selectedDay?.stops ?? [])
         .map((s, idx) => `${idx + 1}. [${s.category}] ${s.name} (${s.lat}, ${s.lon})`)
-        .join('\n')
+        .join('\n') +
+      transitInstruction
 
     try {
       const res = await fetch('/api/ai/suggest', {
@@ -753,11 +967,19 @@ export default function App() {
                       ) : null}
 
                       {trip.aiSuggestion ? (
-                        <div className="mt-2 rounded-md border border-slate-200 bg-white p-4 text-sm prose prose-sm prose-slate max-w-none">
-                          <ReactMarkdown>
-                            {trip.aiSuggestion}
-                          </ReactMarkdown>
-                        </div>
+                        trip.transportMode === 'transit' ? (
+                          <TransitSuggestionPanel
+                            suggestion={trip.aiSuggestion}
+                            timeZone={effectiveTimeZone}
+                            localNow={localNowAtDestination}
+                          />
+                        ) : (
+                          <div className="mt-2 rounded-md border border-slate-200 bg-white p-4 text-sm prose prose-sm prose-slate max-w-none">
+                            <ReactMarkdown>
+                              {trip.aiSuggestion}
+                            </ReactMarkdown>
+                          </div>
+                        )
                       ) : (
                         <div className="mt-2 text-xs text-slate-500">
                           点击 “AI 推荐” 生成按距离优化的建议（若未配置 `OPENAI_API_KEY`，会返回离线建议）。
