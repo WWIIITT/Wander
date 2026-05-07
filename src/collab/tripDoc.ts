@@ -71,6 +71,7 @@ export function tripToJson(trip: YTripMap): TripPlan {
     name: getString(trip, 'name', DEFAULT_TRIP_NAME),
     transportMode: (getString(trip, 'transportMode', 'foot') as TransportMode) ?? 'foot',
     days: daysArr.toArray().map(yDayToJson),
+    aiSuggestion: getString(trip, 'aiSuggestion', ''),
   }
 }
 
@@ -151,4 +152,8 @@ export function updateStopCategory(trip: YTripMap, dayId: string, stopId: string
   const stops = getYArray<YStopMap>(day, 'stops')
   const stop = stops.toArray().find((s) => getString(s, 'id') === stopId)
   if (stop) stop.set('category', category)
+}
+
+export function setAiSuggestion(trip: YTripMap, suggestion: string): void {
+  trip.set('aiSuggestion', suggestion)
 }

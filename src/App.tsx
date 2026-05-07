@@ -263,7 +263,6 @@ export default function App() {
     }
   }, [selectedDay?.stops])
 
-  const [aiMarkdown, setAiMarkdown] = useState<string>('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
   const aiAbortRef = useRef<AbortController | null>(null)
@@ -271,7 +270,6 @@ export default function App() {
   async function runAiSuggest() {
     setAiError(null)
     setAiLoading(true)
-    setAiMarkdown('')
 
     aiAbortRef.current?.abort()
     aiAbortRef.current = new AbortController()
@@ -300,7 +298,7 @@ export default function App() {
       }
 
       const json = (await res.json()) as any
-      setAiMarkdown(String(json?.suggestionMarkdown ?? ''))
+      actions.setAiSuggestion(String(json?.suggestionMarkdown ?? ''))
     } catch (e) {
       setAiError(String(e))
     } finally {
@@ -754,10 +752,10 @@ export default function App() {
                         </div>
                       ) : null}
 
-                      {aiMarkdown ? (
+                      {trip.aiSuggestion ? (
                         <div className="mt-2 rounded-md border border-slate-200 bg-white p-4 text-sm prose prose-sm prose-slate max-w-none">
                           <ReactMarkdown>
-                            {aiMarkdown}
+                            {trip.aiSuggestion}
                           </ReactMarkdown>
                         </div>
                       ) : (

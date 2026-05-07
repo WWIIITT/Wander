@@ -42,7 +42,7 @@ Environment variables (server side):
 
 - `OPENAI_API_KEY` — enable `/api/ai/suggest`
 - `OPENAI_BASE_URL` — default `https://api.openai.com/v1`
-- `OPENAI_MODEL` — default `gpt-4.1-mini`
+- `OPENAI_MODEL` — default `gpt-4o`
 
 Client side (Vite):
 

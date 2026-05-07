@@ -21,4 +21,5 @@ export type TripPlan = {
   name: string
   transportMode: TransportMode
   days: DayPlan[]
+  aiSuggestion?: string
 }

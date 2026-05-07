@@ -10,6 +10,7 @@ import {
   removeDay,
   removeStop,
   renameDay,
+  setAiSuggestion,
   setTransportMode,
   tripToJson,
   updateStopCategory,
@@ -24,6 +25,7 @@ type Actions = {
   removeStop: (dayId: string, stopId: string) => void
   moveStop: (dayId: string, stopId: string, direction: -1 | 1) => void
   updateStopCategory: (dayId: string, stopId: string, category: StopCategory) => void
+  setAiSuggestion: (suggestion: string) => void
 }
 
 export function useTripRoom(roomId: string): {
@@ -77,6 +79,7 @@ export function useTripRoom(roomId: string): {
       removeStop: (dayId, stopId) => removeStop(tripMap, dayId, stopId),
       moveStop: (dayId, stopId, direction) => moveStop(tripMap, dayId, stopId, direction),
       updateStopCategory: (dayId, stopId, category) => updateStopCategory(tripMap, dayId, stopId, category),
+      setAiSuggestion: (suggestion) => setAiSuggestion(tripMap, suggestion),
     }),
     [tripMap],
   )
