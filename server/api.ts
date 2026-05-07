@@ -72,7 +72,11 @@ app.post('/api/ai/suggest', async (req, res) => {
         ? '你是一个旅行规划助手。输出简洁的Markdown，重点是每天行程、交通方式、距离/时间的优化建议。'
         : 'You are a travel planning assistant. Output concise Markdown focusing on day-by-day plan, transport mode choices, and distance/time optimization.'
 
-    const completion = await fetch(`${baseUrl}/chat/completions`, {
+    const endpoint = baseUrl.endsWith('/chat/completions')
+      ? baseUrl
+      : `${baseUrl.replace(/\/$/, '')}/chat/completions`
+
+    const completion = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
