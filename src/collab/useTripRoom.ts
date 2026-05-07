@@ -51,7 +51,7 @@ export function useTripRoom(roomId: string): {
 
     tripMap.observeDeep(update)
 
-    const onStatus = (event: { status: 'connected' | 'disconnected' }) => {
+    const onStatus = (event: { status: 'connected' | 'disconnected' | 'connecting' }) => {
       setConnected(event.status === 'connected')
     }
 

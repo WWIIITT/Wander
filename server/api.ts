@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
 import { z } from 'zod'
@@ -11,6 +12,24 @@ app.use(express.json({ limit: '1mb' }))
 
 app.get('/api/health', (_, res) => {
   res.json({ ok: true, name: 'wander-api' })
+})
+
+app.get('/api/traffic', (req, res) => {
+  const lat = Number(req.query.lat)
+  const lon = Number(req.query.lon)
+
+  const hasPoint = Number.isFinite(lat) && Number.isFinite(lon)
+
+  // MVP stub: no real-time traffic provider wired.
+  // You can extend this endpoint to call a provider (TomTom/HERE/Mapbox/Google) when API keys are configured.
+  res.json({
+    ok: true,
+    mode: 'stub' as const,
+    level: 'unknown' as const,
+    message: hasPoint
+      ? '未接入实时路况（可配置路况API后启用提醒）'
+      : '添加地点后可显示路况提醒（需接入路况API）',
+  })
 })
 
 const SuggestRequest = z.object({

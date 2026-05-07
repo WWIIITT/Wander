@@ -19,6 +19,33 @@ function setRoomInUrl(roomId: string) {
   window.history.replaceState(null, '', url.toString())
 }
 
+const RECENT_ROOMS_KEY = 'wander.recentRooms'
+
+function loadRecentRooms(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_ROOMS_KEY)
+    if (!raw) return []
+    const arr = JSON.parse(raw)
+    return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function saveRecentRooms(rooms: string[]) {
+  try {
+    localStorage.setItem(RECENT_ROOMS_KEY, JSON.stringify(rooms.slice(0, 12)))
+  } catch {
+    // ignore
+  }
+}
+
+function pushRecentRoom(roomId: string): string[] {
+  const next = [roomId, ...loadRecentRooms().filter((r) => r !== roomId)].slice(0, 12)
+  saveRecentRooms(next)
+  return next
+}
+
 function ConnectionPill({ connected }: { connected: boolean }) {
   return (
     <span
@@ -78,9 +105,17 @@ export default function App() {
   }, [])
 
   const [roomId, setRoomId] = useState(initialRoom)
+  const [roomInput, setRoomInput] = useState(initialRoom)
+  const [recentRooms, setRecentRooms] = useState<string[]>(() => pushRecentRoom(initialRoom))
   const { trip, connected, actions } = useTripRoom(roomId)
 
   const [selectedDayId, setSelectedDayId] = useState<string>(() => trip.days[0]?.id ?? '')
+  const [selectedStopId, setSelectedStopId] = useState<string>('')
+
+  useEffect(() => {
+    setRoomInput(roomId)
+    setRecentRooms(pushRecentRoom(roomId))
+  }, [roomId])
 
   useEffect(() => {
     const first = trip.days[0]
@@ -92,11 +127,21 @@ export default function App() {
 
   const selectedDay = trip.days.find((d) => d.id === selectedDayId) ?? trip.days[0]
 
+  useEffect(() => {
+    if (!selectedStopId) return
+    const el = document.getElementById(`stop-${selectedStopId}`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [selectedStopId])
+
   const [placeQuery, setPlaceQuery] = useState('')
   const [placeResults, setPlaceResults] = useState<NominatimPlace[]>([])
   const [placeLoading, setPlaceLoading] = useState(false)
   const [pendingPlace, setPendingPlace] = useState<NominatimPlace | null>(null)
   const [pendingCategory, setPendingCategory] = useState<StopCategory>('sight')
+
+  const [pickedPoint, setPickedPoint] = useState<{ lat: number; lon: number } | null>(null)
+  const [pickedName, setPickedName] = useState('')
+  const [pickedCategory, setPickedCategory] = useState<StopCategory>('sight')
 
   useEffect(() => {
     if (!placeQuery.trim()) {
@@ -151,6 +196,9 @@ export default function App() {
   const [weather, setWeather] = useState<DailyWeather[] | null>(null)
   const [weatherLoading, setWeatherLoading] = useState(false)
 
+  const [trafficMessage, setTrafficMessage] = useState<string>('')
+  const [trafficLoading, setTrafficLoading] = useState(false)
+
   useEffect(() => {
     const first = selectedDay?.stops?.[0]
     if (!first) {
@@ -166,6 +214,39 @@ export default function App() {
         if (!cancelled) setWeather(w)
       } finally {
         if (!cancelled) setWeatherLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedDay?.stops])
+
+  useEffect(() => {
+    const first = selectedDay?.stops?.[0]
+    if (!first) {
+      setTrafficMessage('添加地点后可显示路况提醒（需接入路况API）')
+      return
+    }
+
+    let cancelled = false
+    ;(async () => {
+      setTrafficLoading(true)
+      try {
+        const url = new URL('/api/traffic', window.location.origin)
+        url.searchParams.set('lat', String(first.lat))
+        url.searchParams.set('lon', String(first.lon))
+        const res = await fetch(url.toString())
+        if (!res.ok) {
+          if (!cancelled) setTrafficMessage('路况提醒获取失败')
+          return
+        }
+        const json = (await res.json()) as any
+        if (!cancelled) setTrafficMessage(String(json?.message ?? '未接入实时路况'))
+      } catch {
+        if (!cancelled) setTrafficMessage('路况提醒获取失败')
+      } finally {
+        if (!cancelled) setTrafficLoading(false)
       }
     })()
 
@@ -223,6 +304,17 @@ export default function App() {
     const next = nanoid(10)
     setRoomId(next)
     setRoomInUrl(next)
+    setSelectedStopId('')
+    setPickedPoint(null)
+  }
+
+  function joinRoom(code: string) {
+    const next = code.trim()
+    if (!next) return
+    setRoomId(next)
+    setRoomInUrl(next)
+    setSelectedStopId('')
+    setPickedPoint(null)
   }
 
   async function onCopyLink() {
@@ -245,6 +337,41 @@ export default function App() {
             <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-mono text-slate-700">
               {roomId}
             </div>
+            <select
+              className="hidden rounded-md border border-slate-200 bg-white px-2 py-1 text-sm md:block"
+              value=""
+              onChange={(e) => {
+                const v = e.target.value
+                if (!v) return
+                joinRoom(v)
+              }}
+              title="最近加入/创建的房间"
+            >
+              <option value="">最近房间…</option>
+              {recentRooms.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+
+            <input
+              className="w-28 rounded-md border border-slate-200 px-2 py-1 text-sm md:w-36"
+              placeholder="输入房间码"
+              value={roomInput}
+              onChange={(e) => setRoomInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') joinRoom(roomInput)
+              }}
+            />
+            <button
+              type="button"
+              className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"
+              onClick={() => joinRoom(roomInput)}
+              title="输入房间码加入同一协作房间"
+            >
+              加入
+            </button>
             <button
               type="button"
               className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"
@@ -338,7 +465,14 @@ export default function App() {
                   ) : (
                     <div className="space-y-2">
                       {selectedDay.stops.map((s, idx) => (
-                        <div key={s.id} className="rounded-md border border-slate-200 p-2">
+                        <div
+                          key={s.id}
+                          id={`stop-${s.id}`}
+                          className={
+                            'rounded-md border p-2 ' +
+                            (selectedStopId === s.id ? 'border-slate-900 bg-slate-50' : 'border-slate-200')
+                          }
+                        >
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                               <div className="truncate text-sm font-medium">
@@ -431,7 +565,7 @@ export default function App() {
                           }
                           onClick={() => setPendingPlace(p)}
                         >
-                          <div className="line-clamp-2">{p.display_name}</div>
+                          <div className="overflow-hidden text-ellipsis">{p.display_name}</div>
                           <div className="text-xs text-slate-500">
                             {Number(p.lat).toFixed(5)}, {Number(p.lon).toFixed(5)}
                           </div>
@@ -444,6 +578,58 @@ export default function App() {
                     提示：地点搜索使用 OpenStreetMap Nominatim；部分地区可能需要换地图源/网络。
                   </div>
                 </div>
+
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-slate-900">从地图选点添加</div>
+                  {pickedPoint ? (
+                    <div className="space-y-2 rounded-md border border-slate-200 p-2">
+                      <div className="text-xs text-slate-600">
+                        已选坐标：{pickedPoint.lat.toFixed(5)}, {pickedPoint.lon.toFixed(5)}
+                      </div>
+                      <input
+                        className="w-full rounded-md border border-slate-200 px-2 py-1 text-sm"
+                        placeholder="地点名称（例如：某个小众景点/公厕/餐厅）"
+                        value={pickedName}
+                        onChange={(e) => setPickedName(e.target.value)}
+                      />
+                      <div className="flex items-center gap-2">
+                        <CategorySelect value={pickedCategory} onChange={setPickedCategory} />
+                        <button
+                          type="button"
+                          className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                          onClick={() => {
+                            if (!selectedDay) return
+                            actions.addStop(selectedDay.id, {
+                              name: pickedName.trim() || '地图选点',
+                              lat: pickedPoint.lat,
+                              lon: pickedPoint.lon,
+                              category: pickedCategory,
+                            })
+                            setPickedPoint(null)
+                            setPickedName('')
+                          }}
+                        >
+                          添加
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50"
+                          onClick={() => {
+                            setPickedPoint(null)
+                            setPickedName('')
+                          }}
+                        >
+                          清除
+                        </button>
+                      </div>
+                      <div className="text-xs text-slate-500">在右侧地图上点击任意位置即可选点。</div>
+                    </div>
+                  ) : (
+                    <div className="rounded-md border border-dashed border-slate-300 px-3 py-2 text-sm text-slate-500">
+                      去右侧地图上点一下，即可把坐标带回这里添加。
+                    </div>
+                  )}
+                </div>
               </div>
             ) : null}
           </div>
@@ -452,7 +638,7 @@ export default function App() {
         <section className="min-w-0 flex-1">
           <div className="flex h-full flex-col">
             <div className="border-b border-slate-200 bg-white">
-              <div className="mx-auto grid max-w-6xl grid-cols-1 gap-3 px-4 py-3 md:grid-cols-3">
+              <div className="mx-auto grid max-w-6xl grid-cols-1 gap-3 px-4 py-3 md:grid-cols-4">
                 <div className="rounded-lg border border-slate-200 p-3">
                   <div className="text-xs font-medium text-slate-500">今日行程概览</div>
                   <div className="mt-1 text-sm text-slate-900">
@@ -490,13 +676,32 @@ export default function App() {
                   )}
                   <div className="mt-1 text-xs text-slate-500">来源：Open-Meteo</div>
                 </div>
+
+                <div className="rounded-lg border border-slate-200 p-3">
+                  <div className="text-xs font-medium text-slate-500">路况提醒</div>
+                  <div className="mt-1 text-sm text-slate-900">{trafficLoading ? '加载中…' : trafficMessage}</div>
+                  <div className="mt-1 text-xs text-slate-500">MVP：默认未接入实时路况</div>
+                </div>
               </div>
             </div>
 
             <div className="min-h-0 flex-1">
               <div className="grid h-full grid-cols-1 md:grid-cols-5">
                 <div className="md:col-span-3">
-                  <ItineraryMap stops={selectedDay?.stops ?? []} route={route?.geometry ?? null} />
+                  <ItineraryMap
+                    stops={selectedDay?.stops ?? []}
+                    route={route?.geometry ?? null}
+                    selectedStopId={selectedStopId}
+                    onSelectStop={(id) => setSelectedStopId(id)}
+                    onPickPoint={(p) => {
+                      setPickedPoint(p)
+                      setPickedName((prev) => prev || '地图选点')
+                    }}
+                    onChangeCategory={(stopId, category) => {
+                      if (!selectedDay) return
+                      actions.updateStopCategory(selectedDay.id, stopId, category)
+                    }}
+                  />
                 </div>
                 <div className="min-h-0 border-t border-slate-200 bg-white p-4 md:col-span-2 md:border-l md:border-t-0">
                   <div className="space-y-4">
