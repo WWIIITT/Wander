@@ -15,27 +15,16 @@ export type OsrmRoute = {
   legs: OsrmLeg[]
 }
 
-function modeToProfile(mode: TransportMode): string {
-  switch (mode) {
-    case 'driving':
-      return 'driving'
-    case 'bike':
-      return 'bike'
-    case 'foot':
-    default:
-      return 'foot'
-  }
-}
-
 export async function fetchOsrmRoute(
   mode: TransportMode,
   points: Array<{ lat: number; lon: number }>,
 ): Promise<OsrmRoute | null> {
   if (points.length < 2) return null
 
-  const profile = modeToProfile(mode)
+  // router.project-osrm.org only supports the "driving" profile on the public demo server.
+  // So we always fetch "driving", but we adjust the duration based on transportation mode.
   const coords = points.map((p) => `${p.lon},${p.lat}`).join(';')
-  const url = `https://router.project-osrm.org/route/v1/${profile}/${coords}?overview=full&geometries=polyline&steps=false`
+  const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=polyline&steps=false`
 
   const res = await fetch(url)
   if (!res.ok) return null
@@ -46,14 +35,31 @@ export async function fetchOsrmRoute(
   const decoded = polyline.decode(route.geometry) as [number, number][]
   const geometry = decoded.map(([lat, lng]) => ({ lat, lng }))
 
-  const legs: OsrmLeg[] = (route.legs ?? []).map((l: any) => ({
-    distance: typeof l?.distance === 'number' ? l.distance : 0,
-    duration: typeof l?.duration === 'number' ? l.duration : 0,
-  }))
+  const legs: OsrmLeg[] = (route.legs ?? []).map((l: any) => {
+    const dist = typeof l?.distance === 'number' ? l.distance : 0
+    let dur = typeof l?.duration === 'number' ? l.duration : 0
+    
+    if (mode === 'foot') {
+      dur = dist / 1.4 // ~5 km/h
+    } else if (mode === 'bike') {
+      dur = dist / 4.1 // ~15 km/h
+    }
+    
+    return { distance: dist, duration: dur }
+  })
+
+  let totalDist = typeof route.distance === 'number' ? route.distance : 0
+  let totalDur = typeof route.duration === 'number' ? route.duration : 0
+
+  if (mode === 'foot') {
+    totalDur = totalDist / 1.4
+  } else if (mode === 'bike') {
+    totalDur = totalDist / 4.1
+  }
 
   return {
-    distance: typeof route.distance === 'number' ? route.distance : 0,
-    duration: typeof route.duration === 'number' ? route.duration : 0,
+    distance: totalDist,
+    duration: totalDur,
     geometry,
     legs,
   }

@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
 import { ItineraryMap } from './components/ItineraryMap'
 import { useTripRoom } from './collab/useTripRoom'
 import type { StopCategory, TransportMode } from './domain/trip'
@@ -99,6 +100,13 @@ export default function App() {
   const initialRoom = useMemo(() => {
     const fromUrl = getRoomFromUrl()
     if (fromUrl) return fromUrl
+
+    const recent = loadRecentRooms()
+    if (recent.length > 0) {
+      setRoomInUrl(recent[0])
+      return recent[0]
+    }
+
     const created = nanoid(10)
     setRoomInUrl(created)
     return created
@@ -747,9 +755,11 @@ export default function App() {
                       ) : null}
 
                       {aiMarkdown ? (
-                        <pre className="mt-2 whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-800">
-                          {aiMarkdown}
-                        </pre>
+                        <div className="mt-2 rounded-md border border-slate-200 bg-white p-4 text-sm prose prose-sm prose-slate max-w-none">
+                          <ReactMarkdown>
+                            {aiMarkdown}
+                          </ReactMarkdown>
+                        </div>
                       ) : (
                         <div className="mt-2 text-xs text-slate-500">
                           点击 “AI 推荐” 生成按距离优化的建议（若未配置 `OPENAI_API_KEY`，会返回离线建议）。
